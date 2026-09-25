@@ -26,6 +26,7 @@ import numpy as np
 import pandas as pd
 from dataclasses import dataclass, field
 
+from scanner.bartime import bar_close_mt
 from scanner.config import settings
 from scanner.data_provider import get_ohlcv, get_ohlcv_daily
 from scanner.engine import RETRY_PAUSES_SECONDS
@@ -133,7 +134,7 @@ def run_backtest(symbol: str, exchange: str = "US", max_trades: int = 100) -> Ba
     if in_long:
         unrealized = (close[-1] - entry_price) / entry_price * 100
         open_trade = {
-            "entry_date": entry_date.strftime("%Y-%m-%d %H:%M"),
+            "entry_date": bar_close_mt(entry_date.to_pydatetime()),   # entry fills at the bar close
             "entry_price": round(float(entry_price), 2),
             "unrealized_pct": round(float(unrealized), 2),
         }
