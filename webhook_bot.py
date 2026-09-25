@@ -257,8 +257,8 @@ def _handle(msg: dict):
         return
 
     cmd = _base_command(text)
-    sent_at = datetime.fromtimestamp(msg["date"], tz=timezone.utc).astimezone(_MT).strftime("%-I:%M %p %Z")
-    picked_up = datetime.now(timezone.utc).astimezone(_MT).strftime("%-I:%M %p %Z")
+    sent_at = datetime.fromtimestamp(msg["date"], tz=timezone.utc).astimezone(_MT).strftime("%H:%M %Z")
+    picked_up = datetime.now(timezone.utc).astimezone(_MT).strftime("%H:%M %Z")
 
     if cmd in ("/start", "/help"):
         _send(chat_id, _HELP)
