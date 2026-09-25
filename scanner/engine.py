@@ -29,6 +29,7 @@ class ExchangeResult:
     errors: int
     error_reasons: dict[str, int] = field(default_factory=dict)
     failed_symbols: list[str] = field(default_factory=list)
+    bar: str | None = None    # 4H bar most symbols were evaluated on, exchange time
 
 
 # Pauses before each sequential retry round. Round 1 retries every failure;
@@ -55,6 +56,7 @@ def scan_exchange(exchange: str, symbols: list[tuple[str, str]]) -> ExchangeResu
 
     buy_signals: list[BuyResult] = []
     failed: dict[tuple[str, str], str] = {}
+    bars: collections.Counter[str] = collections.Counter()
 
     def _scan_symbol(item: tuple[str, str]):
         sym, name = item
@@ -65,12 +67,14 @@ def scan_exchange(exchange: str, symbols: list[tuple[str, str]]) -> ExchangeResu
             if result.buy_signal:
                 logger.info(f"[{exchange}] BUY {sym} — {result.explanation}")
                 return item, "buy", result
-            return item, "ok", None
+            return item, "ok", result
         except Exception as exc:
             logger.warning(f"[{exchange}] Error {sym}: {exc}")
             return item, "error", error_reason(exc)
 
     def _collect(item, status, payload):
+        if status in ("buy", "ok") and "bar" in payload.values:
+            bars[payload.values["bar"]] += 1
         if status == "buy":
             buy_signals.append(payload)
         if status == "error":
@@ -109,6 +113,7 @@ def scan_exchange(exchange: str, symbols: list[tuple[str, str]]) -> ExchangeResu
         errors=len(failed),
         error_reasons=reasons,
         failed_symbols=sorted(sym for sym, _ in failed),
+        bar=bars.most_common(1)[0][0] if bars else None,
     )
 
 

@@ -5,11 +5,12 @@ Telegram notifier — sends a scan summary message via the Telegram Bot API.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import requests
 
 _MT = ZoneInfo("America/Denver")
+_NY = ZoneInfo("America/New_York")   # US + TSX 4H bars are stamped in Eastern time
 
 from scanner.config import settings
 from scanner.engine import ExchangeResult
@@ -47,8 +48,7 @@ def _format_exchange_block(result: ExchangeResult) -> str:
     lines = [f"<b>── {result.exchange} ──</b>"]
     if result.buy_signals:
         for r in sorted(result.buy_signals, key=lambda x: x.symbol):
-            name_part = f" — {r.company_name}" if r.company_name else ""
-            lines.append(f"  {r.symbol}{name_part} (4H bar {r.values.get('bar', '?')})")
+            lines.append(f"  {r.symbol} — {r.company_name}" if r.company_name else f"  {r.symbol}")
     else:
         lines.append("  No BUY signals")
     error_note = ""
@@ -65,6 +65,14 @@ def _format_exchange_block(result: ExchangeResult) -> str:
     return "\n".join(lines)
 
 
+def _format_bar_mt(bar: str) -> str:
+    """'2026-09-24 13:30' (Eastern bar open) → 'Sep 24, 11:30 AM – 2:00 PM MDT'."""
+    start = datetime.strptime(bar, "%Y-%m-%d %H:%M").replace(tzinfo=_NY)
+    end = min(start + timedelta(hours=4), start.replace(hour=16, minute=0))
+    start, end = start.astimezone(_MT), end.astimezone(_MT)
+    return f"{start:%b %-d}, {start:%-I:%M %p} – {end:%-I:%M %p %Z}"
+
+
 def send_scan_results(results: list[ExchangeResult]) -> None:
     """Build and send the full scan report to Telegram."""
     now = datetime.now(timezone.utc).astimezone(_MT).strftime("%Y-%m-%d %-I:%M %p %Z")
@@ -77,6 +85,9 @@ def send_scan_results(results: list[ExchangeResult]) -> None:
         f"Signal: 4H EMA20/EMA50/SMA200 + RSI &lt; 80 + D1 open &gt; D1 SMA200\n"
         f"Total BUY signals: <b>{total_buy}</b>\n"
     )
+    bars = [r.bar for r in results if r.bar]
+    if bars:
+        header += f"4H bar: {_format_bar_mt(max(set(bars), key=bars.count))}\n"
 
     blocks = [_format_exchange_block(r) for r in results]
     body = "\n\n".join(blocks)
