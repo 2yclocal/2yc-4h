@@ -192,7 +192,7 @@ class UniverseBacktestEntry:
 def backtest_universe(
     symbols: list[tuple[str, str]],
     exchange: str,
-    min_trades: int = 20,
+    min_trades: int = 10,
     max_workers: int | None = None,
 ) -> list[UniverseBacktestEntry]:
     """

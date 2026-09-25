@@ -22,7 +22,7 @@ from scanner.universe import load_us_symbols, load_tsx_symbols
 from scanner.backtest import backtest_universe
 from scanner.notifier import send_watchlist_results
 
-MIN_TRADES = 20
+MIN_TRADES = 10   # ~2 yrs of 4H history rarely yields 20 closed trades
 TOP_N = 50
 
 
