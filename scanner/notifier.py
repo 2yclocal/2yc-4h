@@ -5,7 +5,7 @@ Telegram notifier — sends a scan summary message via the Telegram Bot API.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import requests
 
@@ -66,9 +66,14 @@ def _format_exchange_block(result: ExchangeResult) -> str:
 
 
 def _format_bar_mt(bar: str) -> str:
-    """'2026-09-24 13:30' (Eastern bar open) → '2026-09-24 11:30 AM MDT'."""
-    start = datetime.strptime(bar, "%Y-%m-%d %H:%M").replace(tzinfo=_NY).astimezone(_MT)
-    return start.strftime("%Y-%m-%d %-I:%M %p %Z")
+    """
+    4H bar close in Mountain time, 24-hour clock.
+    '2026-09-24 13:30' (Eastern bar open) → '2026-09-24 14:00 MDT'.
+    A bar closes 4 hours after it opens or at the 16:00 ET close, whichever is first.
+    """
+    start = datetime.strptime(bar, "%Y-%m-%d %H:%M").replace(tzinfo=_NY)
+    end = min(start + timedelta(hours=4), start.replace(hour=16, minute=0))
+    return end.astimezone(_MT).strftime("%Y-%m-%d %H:%M %Z")
 
 
 def send_scan_results(results: list[ExchangeResult]) -> None:
@@ -85,7 +90,7 @@ def send_scan_results(results: list[ExchangeResult]) -> None:
     )
     bars = [r.bar for r in results if r.bar]
     if bars:
-        header += f"4H bar: {_format_bar_mt(max(set(bars), key=bars.count))}\n"
+        header += f"4H bar close: {_format_bar_mt(max(set(bars), key=bars.count))}\n"
 
     blocks = [_format_exchange_block(r) for r in results]
     body = "\n\n".join(blocks)
