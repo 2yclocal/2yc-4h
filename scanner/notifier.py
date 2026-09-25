@@ -58,6 +58,10 @@ def _format_exchange_block(result: ExchangeResult) -> str:
     lines.append(
         f"  (Scanned {result.symbols_checked} → {len(result.buy_signals)} BUY{error_note})"
     )
+    if result.failed_symbols:
+        shown = result.failed_symbols[:40]
+        more = f" +{len(result.failed_symbols) - 40} more" if len(result.failed_symbols) > 40 else ""
+        lines.append(f"  Not checked: {', '.join(shown)}{more}")
     return "\n".join(lines)
 
 

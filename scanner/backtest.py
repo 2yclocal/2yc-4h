@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 
 from scanner.config import settings
 from scanner.data_provider import get_ohlcv, get_ohlcv_daily
-from scanner.engine import RETRY_PAUSE_SECONDS
+from scanner.engine import RETRY_PAUSES_SECONDS
 from scanner.indicator import _calc_ma, _calc_rsi_wilder, daily_filter
 
 logger = logging.getLogger(__name__)
@@ -237,7 +237,7 @@ def backtest_universe(
     if failed:
         retry, failed[:] = list(failed), []
         logger.info(f"[{exchange}] Retrying {len(retry)} failed symbols sequentially…")
-        time.sleep(RETRY_PAUSE_SECONDS)
+        time.sleep(RETRY_PAUSES_SECONDS[0])
         for item in retry:
             _collect(*_backtest_symbol(item))
 

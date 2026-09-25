@@ -28,9 +28,12 @@ class ExchangeResult:
     buy_signals: list[BuyResult]
     errors: int
     error_reasons: dict[str, int] = field(default_factory=dict)
+    failed_symbols: list[str] = field(default_factory=list)
 
 
-RETRY_PAUSE_SECONDS = 30
+# Pauses before each sequential retry round. Round 1 retries every failure;
+# later rounds only retry rate-limited symbols (no-data failures are permanent).
+RETRY_PAUSES_SECONDS = (30, 60, 120)
 
 
 def error_reason(exc: Exception) -> str:
@@ -81,13 +84,15 @@ def scan_exchange(exchange: str, symbols: list[tuple[str, str]]) -> ExchangeResu
         for outcome in pool.map(_scan_symbol, symbols):
             _collect(*outcome)
 
-    # Second chance for failures — Yahoo throttles cloud IPs under parallel
-    # load, so retry one at a time after a pause. Permanent failures
-    # (e.g. no data) just fail again.
-    if failed:
-        logger.info(f"[{exchange}] Retrying {len(failed)} failed symbols sequentially…")
-        time.sleep(RETRY_PAUSE_SECONDS)
-        for item in list(failed):
+    # Yahoo throttles cloud IPs under parallel load, so retry failures one at
+    # a time after a pause, backing off longer each round.
+    for round_no, pause in enumerate(RETRY_PAUSES_SECONDS, start=1):
+        retry = [item for item, why in failed.items() if round_no == 1 or why == "rate limited"]
+        if not retry:
+            break
+        logger.info(f"[{exchange}] Retry round {round_no}: {len(retry)} symbols after {pause}s…")
+        time.sleep(pause)
+        for item in retry:
             _collect(*_scan_symbol(item))
 
     reasons = dict(collections.Counter(failed.values()))
@@ -103,6 +108,7 @@ def scan_exchange(exchange: str, symbols: list[tuple[str, str]]) -> ExchangeResu
         buy_signals=buy_signals,
         errors=len(failed),
         error_reasons=reasons,
+        failed_symbols=sorted(sym for sym, _ in failed),
     )
 
 
