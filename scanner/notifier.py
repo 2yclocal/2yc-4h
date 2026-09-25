@@ -5,11 +5,10 @@ Telegram notifier — sends a scan summary message via the Telegram Bot API.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
+from datetime import datetime, timedelta, timezone
 import requests
 
-_MT = ZoneInfo("America/Denver")
+_MT = timezone(timedelta(hours=-6), "MDT")   # Alberta: permanent UTC-6, no DST
 
 from scanner.bartime import bar_close_mt
 from scanner.config import settings

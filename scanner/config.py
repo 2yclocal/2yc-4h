@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     # Schedule
     scan_hour: int = 14
     scan_minute: int = 0
-    scan_timezone: str = "America/Denver"  # MST/MDT
+    scan_timezone: str = "America/Edmonton"  # Alberta, permanent UTC-6
 
     # /check command filter (not used in full scan — index membership is the size gate)
     min_market_cap: float = 5_000_000_000     # $5B

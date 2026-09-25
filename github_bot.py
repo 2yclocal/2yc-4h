@@ -15,10 +15,9 @@ import sys
 import os
 import logging
 import requests
-from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
+from datetime import datetime, timedelta, timezone
 
-_MT = ZoneInfo("America/Denver")
+_MT = timezone(timedelta(hours=-6), "MDT")   # Alberta: permanent UTC-6, no DST
 
 sys.path.insert(0, os.path.dirname(__file__))
 

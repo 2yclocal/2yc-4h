@@ -20,8 +20,7 @@ import os
 import logging
 import threading
 import requests
-from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
+from datetime import datetime, timedelta, timezone
 from flask import Flask, request, jsonify, abort
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -39,7 +38,7 @@ if not BOT_TOKEN:
     sys.exit(1)
 
 BASE = f"https://api.telegram.org/bot{BOT_TOKEN}"
-_MT = ZoneInfo("America/Denver")
+_MT = timezone(timedelta(hours=-6), "MDT")   # Alberta: permanent UTC-6, no DST
 
 app = Flask(__name__)
 

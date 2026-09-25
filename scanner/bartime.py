@@ -9,11 +9,11 @@ Mountain time on a 24-hour clock.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 _NY = ZoneInfo("America/New_York")
-_MT = ZoneInfo("America/Denver")
+_MT = timezone(timedelta(hours=-6), "MDT")   # Alberta: permanent UTC-6, no DST
 
 
 def bar_close_mt(bar_open: str | datetime) -> str:
