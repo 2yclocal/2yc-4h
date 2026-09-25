@@ -106,6 +106,13 @@ def get_ohlcv(symbol: str) -> pd.DataFrame:
         ticker = yf.Ticker(symbol)
 
         df = ticker.history(period=settings.intraday_period, interval="4h", auto_adjust=False)
+        if df.empty:
+            # For listings younger than the period, yfinance moves the start
+            # back to the listing date, which Yahoo rejects as older than
+            # 730 days (seen on GEV, RDDT, SOLV). An explicit start inside
+            # the window works for every symbol.
+            start = (pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=729)).date()
+            df = ticker.history(start=str(start), interval="4h", auto_adjust=False)
         df = _drop_incomplete_bar(_clean(df, symbol))
         df.index = pd.to_datetime(df.index).tz_localize(None)
         if df.empty:

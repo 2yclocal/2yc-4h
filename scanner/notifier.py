@@ -51,7 +51,10 @@ def _format_exchange_block(result: ExchangeResult) -> str:
             lines.append(f"  {r.symbol}{name_part} (4H bar {r.values.get('bar', '?')})")
     else:
         lines.append("  No BUY signals")
-    error_note = f" · {result.errors} errors" if result.errors else ""
+    error_note = ""
+    if result.errors:
+        breakdown = ", ".join(f"{n} {why}" for why, n in sorted(result.error_reasons.items(), key=lambda x: -x[1]))
+        error_note = f" · {result.errors} errors: {breakdown}" if breakdown else f" · {result.errors} errors"
     lines.append(
         f"  (Scanned {result.symbols_checked} → {len(result.buy_signals)} BUY{error_note})"
     )

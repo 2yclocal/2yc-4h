@@ -19,6 +19,7 @@ percent_of_equity=100: each trade is sized at a fixed $100K notional
 
 from __future__ import annotations
 
+import time
 import logging
 import concurrent.futures
 import numpy as np
@@ -27,6 +28,7 @@ from dataclasses import dataclass, field
 
 from scanner.config import settings
 from scanner.data_provider import get_ohlcv, get_ohlcv_daily
+from scanner.engine import RETRY_PAUSE_SECONDS
 from scanner.indicator import _calc_ma, _calc_rsi_wilder, daily_filter
 
 logger = logging.getLogger(__name__)
@@ -204,25 +206,43 @@ def backtest_universe(
     logger.info(f"[{exchange}] Starting universe backtest — {len(symbols)} symbols")
 
     entries: list[UniverseBacktestEntry] = []
-    errors = 0
+    too_few = 0
+    failed: list[tuple[str, str]] = []
 
-    def _backtest_symbol(item: tuple[str, str]) -> UniverseBacktestEntry | None:
+    def _backtest_symbol(item: tuple[str, str]):
         sym, name = item
         try:
             result = run_backtest(sym, exchange)
             if result.trades_used < min_trades:
-                return None
-            return UniverseBacktestEntry(symbol=sym, company_name=name, exchange=exchange, result=result)
+                return item, "too_few", None
+            return item, "ok", UniverseBacktestEntry(symbol=sym, company_name=name, exchange=exchange, result=result)
         except Exception as exc:
             logger.warning(f"[{exchange}] Backtest error {sym}: {exc}")
-            return None
+            return item, "error", None
+
+    def _collect(item, status, entry):
+        nonlocal too_few
+        if status == "ok":
+            entries.append(entry)
+        elif status == "too_few":
+            too_few += 1
+        else:
+            failed.append(item)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-        for entry in pool.map(_backtest_symbol, symbols):
-            if entry is not None:
-                entries.append(entry)
-            else:
-                errors += 1
+        for outcome in pool.map(_backtest_symbol, symbols):
+            _collect(*outcome)
 
-    logger.info(f"[{exchange}] Done — {len(entries)} ranked, {errors} skipped/errors")
+    # Second chance for failures, one at a time — see engine.scan_exchange
+    if failed:
+        retry, failed[:] = list(failed), []
+        logger.info(f"[{exchange}] Retrying {len(retry)} failed symbols sequentially…")
+        time.sleep(RETRY_PAUSE_SECONDS)
+        for item in retry:
+            _collect(*_backtest_symbol(item))
+
+    logger.info(
+        f"[{exchange}] Done — {len(entries)} ranked, {too_few} below {min_trades} trades, "
+        f"{len(failed)} errors"
+    )
     return entries

@@ -8,9 +8,11 @@ US stocks (NYSE + Nasdaq combined) are labelled as the "US" exchange.
 
 from __future__ import annotations
 
+import time
 import logging
+import collections
 import concurrent.futures
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from scanner.config import settings
 from scanner.data_provider import get_ohlcv, get_ohlcv_daily
@@ -25,6 +27,20 @@ class ExchangeResult:
     symbols_checked: int
     buy_signals: list[BuyResult]
     errors: int
+    error_reasons: dict[str, int] = field(default_factory=dict)
+
+
+RETRY_PAUSE_SECONDS = 30
+
+
+def error_reason(exc: Exception) -> str:
+    """Bucket an exception into a short label for the Telegram report."""
+    msg = str(exc)
+    if "Rate" in msg or "Too Many" in msg or "429" in msg:
+        return "rate limited"
+    if "No OHLCV" in msg or "No completed" in msg:
+        return "no data"
+    return type(exc).__name__
 
 
 def scan_exchange(exchange: str, symbols: list[tuple[str, str]]) -> ExchangeResult:
@@ -35,9 +51,9 @@ def scan_exchange(exchange: str, symbols: list[tuple[str, str]]) -> ExchangeResu
     logger.info(f"[{exchange}] Starting scan — {len(symbols)} symbols")
 
     buy_signals: list[BuyResult] = []
-    errors = 0
+    failed: dict[tuple[str, str], str] = {}
 
-    def _scan_symbol(item: tuple[str, str]) -> tuple[str, BuyResult | None]:
+    def _scan_symbol(item: tuple[str, str]):
         sym, name = item
         try:
             df = get_ohlcv(sym)
@@ -45,30 +61,48 @@ def scan_exchange(exchange: str, symbols: list[tuple[str, str]]) -> ExchangeResu
             result = compute_buy_signal(df, daily, sym, exchange, name)
             if result.buy_signal:
                 logger.info(f"[{exchange}] BUY {sym} — {result.explanation}")
-                return "buy", result
-            return "ok", None
+                return item, "buy", result
+            return item, "ok", None
         except Exception as exc:
             logger.warning(f"[{exchange}] Error {sym}: {exc}")
-            return "error", None
+            return item, "error", error_reason(exc)
+
+    def _collect(item, status, payload):
+        if status == "buy":
+            buy_signals.append(payload)
+        if status == "error":
+            failed[item] = payload
+        else:
+            failed.pop(item, None)
 
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=settings.max_workers_per_exchange
     ) as pool:
-        for status, result in pool.map(_scan_symbol, symbols):
-            if status == "buy":
-                buy_signals.append(result)
-            elif status == "error":
-                errors += 1
+        for outcome in pool.map(_scan_symbol, symbols):
+            _collect(*outcome)
 
+    # Second chance for failures — Yahoo throttles cloud IPs under parallel
+    # load, so retry one at a time after a pause. Permanent failures
+    # (e.g. no data) just fail again.
+    if failed:
+        logger.info(f"[{exchange}] Retrying {len(failed)} failed symbols sequentially…")
+        time.sleep(RETRY_PAUSE_SECONDS)
+        for item in list(failed):
+            _collect(*_scan_symbol(item))
+
+    reasons = dict(collections.Counter(failed.values()))
     logger.info(
-        f"[{exchange}] Done — {len(buy_signals)} BUY signals, {errors} errors"
+        f"[{exchange}] Done — {len(buy_signals)} BUY signals, {len(failed)} errors {reasons or ''}"
     )
+    if failed:
+        logger.info(f"[{exchange}] Failed symbols: {', '.join(sorted(s for s, _ in failed))}")
 
     return ExchangeResult(
         exchange=exchange,
         symbols_checked=len(symbols),
         buy_signals=buy_signals,
-        errors=errors,
+        errors=len(failed),
+        error_reasons=reasons,
     )
 
 
