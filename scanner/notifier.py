@@ -78,7 +78,7 @@ def _format_bar_mt(bar: str) -> str:
 
 def send_scan_results(results: list[ExchangeResult]) -> None:
     """Build and send the full scan report to Telegram."""
-    now = datetime.now(timezone.utc).astimezone(_MT).strftime("%Y-%m-%d %-I:%M %p %Z")
+    now = datetime.now(timezone.utc).astimezone(_MT).strftime("%Y-%m-%d %H:%M %Z")
     total_buy = sum(len(r.buy_signals) for r in results)
 
     header = (
@@ -105,7 +105,7 @@ def send_scan_results(results: list[ExchangeResult]) -> None:
 
 def send_watchlist_results(entries: list[UniverseBacktestEntry], total_backtested: int, min_trades: int) -> None:
     """Build and send the ranked watchlist backtest report to Telegram."""
-    now = datetime.now(timezone.utc).astimezone(_MT).strftime("%Y-%m-%d %-I:%M %p %Z")
+    now = datetime.now(timezone.utc).astimezone(_MT).strftime("%Y-%m-%d %H:%M %Z")
 
     header = (
         f"<b>2YC 4H WATCHLIST BACKTEST</b>\n"
