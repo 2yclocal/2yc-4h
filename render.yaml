@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: 2yc-4h-telegram-bot
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --workers 1 --timeout 120 --bind 0.0.0.0:$PORT webhook_bot:app
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_REPOSITORY
+        value: 2yclocal/2yc-4h
+      - key: MIN_MARKET_CAP
+        value: "5000000000"
+      - key: MIN_AVG_DAILY_VOLUME
+        value: "1000000"

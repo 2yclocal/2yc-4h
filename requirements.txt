@@ -1,0 +1,9 @@
+yfinance>=0.2.40
+pandas>=2.0
+numpy>=1.26
+requests>=2.31
+pydantic-settings>=2.0
+flask>=3.0
+gunicorn>=21.0
+pytz>=2024.1
+lxml>=4.9

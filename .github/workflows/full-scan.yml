@@ -1,0 +1,49 @@
+name: 2YC 4H Full Scan
+
+on:
+  schedule:
+    # After each 4H bar close (13:30 + 16:00 New York). Both EDT and EST UTC
+    # times are listed; schedule_guard.py lets through only the correct one.
+    - cron: '45 17 * * 1-5'   # 13:45 EDT → morning bar (skipped in winter)
+    - cron: '45 18 * * 1-5'   # 13:45 EST → morning bar (skipped in summer)
+    - cron: '15 20 * * 1-5'   # 16:15 EDT → afternoon bar (skipped in winter)
+    - cron: '15 21 * * 1-5'   # 16:15 EST → afternoon bar (skipped in summer)
+  workflow_dispatch:           # Also triggered by /fullscan in Telegram bot
+
+permissions:
+  contents: read
+
+jobs:
+  full-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120    # 4H + daily fetch across ~1100 symbols
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Check 4H bar-close slot
+        id: slot
+        env:
+          SCHEDULE_CRON: ${{ github.event.schedule }}
+        run: python3 schedule_guard.py
+
+      - name: Set up Python
+        if: steps.slot.outputs.run == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        if: steps.slot.outputs.run == 'true'
+        run: pip install -q -r requirements.txt
+
+      - name: Run full scan + send Telegram alert
+        if: steps.slot.outputs.run == 'true'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          MIN_MARKET_CAP: '5000000000'
+          MIN_AVG_DAILY_VOLUME: '1000000'
+        run: python run.py

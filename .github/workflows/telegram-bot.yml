@@ -1,0 +1,36 @@
+name: 2YC 4H Telegram Bot
+
+on:
+  workflow_dispatch:   # Manual fallback only — bot now runs as a Render webhook service
+
+permissions:
+  actions: write   # Required to trigger workflow_dispatch via API
+  contents: read
+
+jobs:
+  handle-messages:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -q -r requirements.txt
+
+      - name: Process Telegram messages
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          MIN_MARKET_CAP: '5000000000'
+          MIN_AVG_DAILY_VOLUME: '1000000'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python github_bot.py

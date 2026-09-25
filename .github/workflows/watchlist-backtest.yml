@@ -1,0 +1,31 @@
+name: 2YC 4H Watchlist Backtest
+
+on:
+  workflow_dispatch:   # Triggered by /watchlist in Telegram bot
+
+permissions:
+  contents: read
+
+jobs:
+  watchlist-backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180    # 4H + daily backtest across ~1100 symbols
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -q -r requirements.txt
+
+      - name: Run watchlist backtest + send Telegram alert
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python run_watchlist_backtest.py
