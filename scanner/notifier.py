@@ -73,7 +73,7 @@ def send_scan_results(results: list[ExchangeResult]) -> None:
         f"<b>2YC 4H 20/50/200 SCAN</b>\n"
         f"<b>{now}</b>\n"
         f"Universe: S&amp;P 500 + S&amp;P 400 | TSX Composite\n"
-        f"Signal: 4H EMA20/EMA50/SMA200 + RSI &lt; 80 + D1 open &gt; D1 SMA200\n"
+        f"Signal: 4H EMA20/EMA50/SMA200 + D1 open &gt; D1 SMA200\n"
         f"Total BUY signals: <b>{total_buy}</b>\n"
     )
     bars = [r.bar for r in results if r.bar]

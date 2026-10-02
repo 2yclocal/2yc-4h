@@ -5,15 +5,14 @@ Buy conditions on the 4H chart (either triggers a signal):
   1. Current bar opens above SMA200 AND previous bar opened below SMA200 (crossover)
   2. EMA20 crosses above EMA50, both above SMA200
 
-Both conditions require RSI14 < 80 AND the D1 filter: the previous completed
-daily candle opened above the daily SMA200. Signals fire on the last
-completed 4H bar only — no sell tracking, no alternating state.
+Both conditions require the D1 filter: the previous completed daily candle
+opened above the daily SMA200. Signals fire on the last completed 4H bar
+only — no sell tracking, no alternating state.
 
 Parameters (overridable via .env):
   MA Fast      : EMA 20
   MA Slow      : EMA 50
   MA Direction : SMA 200
-  RSI          : period 14, threshold < 80
   D1 filter    : daily SMA 200, previous day's open
 """
 
@@ -32,7 +31,6 @@ class BuyResult:
     buy_signal: bool
     cond_open_cross: bool = False
     cond_ma_cross: bool = False
-    rsi_ok: bool = False
     daily_ok: bool = False
     explanation: str = ""
     values: dict = field(default_factory=dict)
@@ -42,16 +40,6 @@ def _calc_ma(series: pd.Series, period: int, ma_type: str) -> pd.Series:
     if ma_type == "EMA":
         return series.ewm(span=period, adjust=False).mean()
     return series.rolling(period).mean()
-
-
-def _calc_rsi_wilder(series: pd.Series, period: int) -> pd.Series:
-    delta = series.diff()
-    gain = delta.clip(lower=0)
-    loss = (-delta).clip(lower=0)
-    avg_gain = gain.ewm(alpha=1 / period, adjust=False).mean()
-    avg_loss = loss.ewm(alpha=1 / period, adjust=False).mean()
-    rs = avg_gain / avg_loss.replace(0, np.nan)
-    return 100 - (100 / (1 + rs))
 
 
 def _crossover(a: pd.Series, b: pd.Series) -> pd.Series:
@@ -133,9 +121,6 @@ def compute_buy_signal(
     df["ma_slow"] = _calc_ma(df["close"], settings.ma_slow_period, settings.ma_slow_type)
     df["ma_dir"]  = _calc_ma(df["close"], settings.ma_direction_period, settings.ma_direction_type)
 
-    # RSI
-    df["rsi"] = _calc_rsi_wilder(df["close"], settings.rsi_period)
-
     # Condition 1: current bar opens above SMA200, previous bar opened below it
     if settings.buy_use_open_cross:
         cond1 = bool(
@@ -155,14 +140,11 @@ def compute_buy_signal(
     else:
         cond2 = False
 
-    # RSI gate
-    rsi_ok = bool(df["rsi"].iloc[-1] < settings.rsi_buy_threshold) if settings.rsi_enabled else True
-
     # D1 gate: yesterday's daily candle opened above the daily SMA200
     d1 = daily_filter(df, daily).iloc[-1]
     daily_ok = bool(d1["d1_ok"])
 
-    buy_signal = (cond1 or cond2) and rsi_ok and daily_ok
+    buy_signal = (cond1 or cond2) and daily_ok
 
     last = df.iloc[-1]
     return BuyResult(
@@ -172,7 +154,6 @@ def compute_buy_signal(
         buy_signal=buy_signal,
         cond_open_cross=cond1,
         cond_ma_cross=cond2,
-        rsi_ok=rsi_ok,
         daily_ok=daily_ok,
         explanation=_build_explanation(last, d1, cond1, cond2, buy_signal),
         values={
@@ -181,7 +162,6 @@ def compute_buy_signal(
             "ema20":  round(float(last["ma_fast"]), 4),
             "ema50":  round(float(last["ma_slow"]), 4),
             "sma200": round(float(last["ma_dir"]),  4),
-            "rsi14":  round(float(last["rsi"]),     2),
             "d1_open":   round(float(d1["d1_open"]),   2),
             "d1_sma200": round(float(d1["d1_sma200"]), 4),
         },
@@ -199,7 +179,6 @@ def _build_explanation(row, d1, cond1: bool, cond2: bool, buy_signal: bool) -> s
             f"4H EMA20 ({row['ma_fast']:.2f}) crossed above EMA50 ({row['ma_slow']:.2f}), "
             f"both above 4H SMA200 ({row['ma_dir']:.2f})"
         )
-    parts.append(f"RSI14={row['rsi']:.1f} < 80")
     if settings.daily_filter_enabled:
         parts.append(f"D1 open ({d1['d1_open']:.2f}) above D1 SMA200 ({d1['d1_sma200']:.2f})")
     return " | ".join(parts)

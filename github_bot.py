@@ -146,7 +146,7 @@ _HELP = (
     "↳ Reply within ~15 minutes\n\n"
     "<b>Full S&amp;P 500 + S&amp;P 400 + TSX Composite scan:</b>\n"
     "<code>/fullscan</code>\n"
-    "Universe: S&amp;P 500 + S&amp;P 400 + TSX Composite · 4H EMA20/EMA50/SMA200 + RSI &lt; 80 + D1 open &gt; D1 SMA200\n\n"
+    "Universe: S&amp;P 500 + S&amp;P 400 + TSX Composite · 4H EMA20/EMA50/SMA200 + D1 open &gt; D1 SMA200\n\n"
     "<b>Backtest a symbol (4H, ~2 yrs of history):</b>\n"
     "<code>/backtest AAPL</code>\n\n"
     "<b>Backtest &amp; rank the whole watchlist by win rate:</b>\n"
@@ -214,7 +214,7 @@ def _trigger_full_scan() -> str:
         return (
             "🚀 <b>Full scan launched!</b>\n\n"
             "Universe: S&amp;P 500 + S&amp;P 400 + TSX Composite\n"
-            "Signal: 4H EMA20/EMA50/SMA200 crossover + RSI &lt; 80 + D1 open &gt; D1 SMA200\n\n"
+            "Signal: 4H EMA20/EMA50/SMA200 crossover + D1 open &gt; D1 SMA200\n\n"
         )
     return f"⚠️ Failed to trigger scan (HTTP {resp.status_code}): {resp.text[:120]}"
 

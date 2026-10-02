@@ -30,9 +30,6 @@ class Settings(BaseSettings):
     ma_slow_type: Literal["EMA", "SMA"] = "EMA"
     ma_direction_period: int = 200
     ma_direction_type: Literal["EMA", "SMA"] = "SMA"
-    rsi_period: int = 14
-    rsi_buy_threshold: float = 80.0
-    rsi_enabled: bool = True
     buy_use_open_cross: bool = True
     buy_use_ma_cross: bool = True
 

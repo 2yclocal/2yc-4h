@@ -30,7 +30,7 @@ from scanner.bartime import bar_close_mt
 from scanner.config import settings
 from scanner.data_provider import get_ohlcv, get_ohlcv_daily
 from scanner.engine import RETRY_PAUSES_SECONDS
-from scanner.indicator import _calc_ma, _calc_rsi_wilder, daily_filter
+from scanner.indicator import _calc_ma, daily_filter
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +76,6 @@ def run_backtest(symbol: str, exchange: str = "US", max_trades: int = 100) -> Ba
     df["ma_fast"] = _calc_ma(df["close"], settings.ma_fast_period, settings.ma_fast_type)
     df["ma_slow"] = _calc_ma(df["close"], settings.ma_slow_period, settings.ma_slow_type)
     df["ma_dir"] = _calc_ma(df["close"], settings.ma_direction_period, settings.ma_direction_type)
-    df["rsi"] = _calc_rsi_wilder(df["close"], settings.rsi_period)
 
     open_ = df["open"].to_numpy()
     high = df["high"].to_numpy()
@@ -84,7 +83,6 @@ def run_backtest(symbol: str, exchange: str = "US", max_trades: int = 100) -> Ba
     ma_fast = df["ma_fast"].to_numpy()
     ma_slow = df["ma_slow"].to_numpy()
     ma_dir = df["ma_dir"].to_numpy()
-    rsi = df["rsi"].to_numpy()
     d1_ok = daily_filter(df, daily)["d1_ok"].to_numpy()
     dates = df.index
 
@@ -95,7 +93,7 @@ def run_backtest(symbol: str, exchange: str = "US", max_trades: int = 100) -> Ba
     entry_date = None
 
     for i in range(1, len(df)):
-        if np.isnan(ma_dir[i]) or np.isnan(ma_dir[i - 1]) or np.isnan(ma_fast[i - 1]) or np.isnan(rsi[i]):
+        if np.isnan(ma_dir[i]) or np.isnan(ma_dir[i - 1]) or np.isnan(ma_fast[i - 1]):
             continue
 
         cond1 = settings.buy_use_open_cross and (open_[i] > ma_dir[i] and open_[i - 1] < ma_dir[i - 1])
@@ -103,8 +101,7 @@ def run_backtest(symbol: str, exchange: str = "US", max_trades: int = 100) -> Ba
             ma_fast[i] > ma_slow[i] and ma_fast[i - 1] <= ma_slow[i - 1] and
             ma_fast[i] > ma_dir[i] and ma_slow[i] > ma_dir[i]
         )
-        rsi_ok = (rsi[i] < settings.rsi_buy_threshold) if settings.rsi_enabled else True
-        buy_condition = (cond1 or cond2) and rsi_ok and d1_ok[i]
+        buy_condition = (cond1 or cond2) and d1_ok[i]
 
         sell_ma_cross = ma_fast[i] < ma_slow[i] and ma_fast[i - 1] >= ma_slow[i - 1]
         sell_high_dir = high[i] < ma_dir[i] and high[i - 1] >= ma_dir[i - 1]
