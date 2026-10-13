@@ -11,6 +11,7 @@ History is limited to what Yahoo serves for 4H bars (~730 days).
 Mirrors the Pine script's signal logic exactly:
   - process_orders_on_close: entries/exits fill at the signal bar's close
   - alternation: no buy,buy or sell,sell — must flip state each time
+  - sells: EMA20 x< EMA50, high x< SMA200, high x< EMA50
 
 Position sizing here deliberately diverges from the Pine strategy's
 percent_of_equity=100: each trade is sized at a fixed $100K notional
@@ -105,8 +106,8 @@ def run_backtest(symbol: str, exchange: str = "US", max_trades: int = 100) -> Ba
 
         sell_ma_cross = ma_fast[i] < ma_slow[i] and ma_fast[i - 1] >= ma_slow[i - 1]
         sell_high_dir = high[i] < ma_dir[i] and high[i - 1] >= ma_dir[i - 1]
-        sell_high_fast = high[i] < ma_fast[i] and high[i - 1] >= ma_fast[i - 1]
-        sell_condition = sell_ma_cross or sell_high_dir or sell_high_fast
+        sell_high_slow = high[i] < ma_slow[i] and high[i - 1] >= ma_slow[i - 1]
+        sell_condition = sell_ma_cross or sell_high_dir or sell_high_slow
 
         buy_signal = buy_condition and not last_was_buy
         sell_signal = sell_condition and last_was_buy
