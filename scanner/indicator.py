@@ -2,7 +2,8 @@
 2YC 4H 20/50/200 indicator — runs on 4H bars with a daily trend filter.
 
 Buy conditions on the 4H chart (either triggers a signal):
-  1. Current bar opens above SMA200 AND previous bar opened below SMA200 (crossover)
+  1. Current bar opens above SMA200, closes above its open (green candle),
+     AND previous bar opened below SMA200 (crossover)
   2. EMA20 crosses above EMA50, both above SMA200
 
 Both conditions require the D1 filter: the previous completed daily candle
@@ -121,10 +122,11 @@ def compute_buy_signal(
     df["ma_slow"] = _calc_ma(df["close"], settings.ma_slow_period, settings.ma_slow_type)
     df["ma_dir"]  = _calc_ma(df["close"], settings.ma_direction_period, settings.ma_direction_type)
 
-    # Condition 1: current bar opens above SMA200, previous bar opened below it
+    # Condition 1: current bar opens above SMA200 and closes green, previous bar opened below it
     if settings.buy_use_open_cross:
         cond1 = bool(
             (df["open"].iloc[-1] > df["ma_dir"].iloc[-1]) and
+            (df["close"].iloc[-1] > df["open"].iloc[-1]) and
             (df["open"].iloc[-2] < df["ma_dir"].iloc[-2])
         )
     else:
@@ -173,7 +175,10 @@ def _build_explanation(row, d1, cond1: bool, cond2: bool, buy_signal: bool) -> s
         return "No BUY signal on last bar"
     parts = []
     if cond1:
-        parts.append(f"4H open ({row['open']:.2f}) above 4H SMA200 ({row['ma_dir']:.2f})")
+        parts.append(
+            f"4H open ({row['open']:.2f}) above 4H SMA200 ({row['ma_dir']:.2f}), "
+            f"green candle (close {row['close']:.2f})"
+        )
     if cond2:
         parts.append(
             f"4H EMA20 ({row['ma_fast']:.2f}) crossed above EMA50 ({row['ma_slow']:.2f}), "
