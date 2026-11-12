@@ -14,9 +14,11 @@ import collections
 import concurrent.futures
 from dataclasses import dataclass, field
 
+import pandas as pd
+
 from scanner.config import settings
 from scanner.data_provider import get_ohlcv, get_ohlcv_daily
-from scanner.indicator import BuyResult, compute_buy_signal
+from scanner.indicator import BuyResult, compute_buy_signal, _fill_daily_gaps
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +39,34 @@ class ExchangeResult:
 RETRY_PAUSES_SECONDS = (30, 60, 120)
 
 
+def period_return(df: pd.DataFrame, daily: pd.DataFrame) -> float | None:
+    """
+    Return from the daily close rs_lookback sessions before the last 4H bar's
+    day to that bar's close — the same 3-month window 2YC 1D and Pullback20
+    use. None if history is too short.
+    """
+    n = settings.rs_lookback
+    try:
+        daily = _fill_daily_gaps(df, daily)
+        prior = daily["close"][daily.index.normalize() < df.index[-1].normalize()]
+        if len(prior) < n:
+            return None
+        return float(df["close"].iloc[-1] / prior.iloc[-n] - 1)
+    except Exception as exc:          # RS is display-only — never lose a signal over it
+        logger.warning(f"RS return failed: {exc}")
+        return None
+
+
+def assign_rs(buy_signals: list[BuyResult], returns: dict[str, float]) -> None:
+    """
+    RS percentile (0-100) of each signal's return among every symbol scanned
+    on the same exchange — the same ranking as Pullback20's rs_table.
+    """
+    pct = pd.Series(returns, dtype=float).dropna().rank(pct=True) * 100
+    for r in buy_signals:
+        r.rs_pct = float(pct[r.symbol]) if r.symbol in pct.index else None
+
+
 def error_reason(exc: Exception) -> str:
     """Bucket an exception into a short label for the Telegram report."""
     msg = str(exc)
@@ -55,6 +85,7 @@ def scan_exchange(exchange: str, symbols: list[tuple[str, str]]) -> ExchangeResu
     logger.info(f"[{exchange}] Starting scan — {len(symbols)} symbols")
 
     buy_signals: list[BuyResult] = []
+    returns: dict[str, float] = {}
     failed: dict[tuple[str, str], str] = {}
     bars: collections.Counter[str] = collections.Counter()
 
@@ -64,15 +95,18 @@ def scan_exchange(exchange: str, symbols: list[tuple[str, str]]) -> ExchangeResu
             df = get_ohlcv(sym)
             daily = get_ohlcv_daily(sym)
             result = compute_buy_signal(df, daily, sym, exchange, name)
+            ret = period_return(df, daily)
             if result.buy_signal:
                 logger.info(f"[{exchange}] BUY {sym} — {result.explanation}")
-                return item, "buy", result
-            return item, "ok", result
+                return item, "buy", result, ret
+            return item, "ok", result, ret
         except Exception as exc:
             logger.warning(f"[{exchange}] Error {sym}: {exc}")
-            return item, "error", error_reason(exc)
+            return item, "error", error_reason(exc), None
 
-    def _collect(item, status, payload):
+    def _collect(item, status, payload, ret):
+        if ret is not None:
+            returns[item[0]] = ret
         if status in ("buy", "ok") and "bar" in payload.values:
             bars[payload.values["bar"]] += 1
         if status == "buy":
@@ -98,6 +132,8 @@ def scan_exchange(exchange: str, symbols: list[tuple[str, str]]) -> ExchangeResu
         time.sleep(pause)
         for item in retry:
             _collect(*_scan_symbol(item))
+
+    assign_rs(buy_signals, returns)
 
     reasons = dict(collections.Counter(failed.values()))
     logger.info(

@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     daily_ma_period: int = 200
     daily_ma_type: Literal["EMA", "SMA"] = "SMA"
 
+    # Alert sort: RS = percentile of each symbol's N-day return among every
+    # symbol scanned on the same exchange (same formula as Pullback20)
+    rs_lookback: int = 63                 # ~3 months
+
     # Yahoo caps 4H history at ~730 days
     intraday_period: str = "730d"
 

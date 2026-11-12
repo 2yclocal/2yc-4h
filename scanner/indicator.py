@@ -33,6 +33,7 @@ class BuyResult:
     cond_open_cross: bool = False
     cond_ma_cross: bool = False
     daily_ok: bool = False
+    rs_pct: float | None = None   # set by the engine — needs the whole exchange
     explanation: str = ""
     values: dict = field(default_factory=dict)
 

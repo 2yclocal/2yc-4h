@@ -43,11 +43,22 @@ def _send(text: str) -> bool:
         return False
 
 
+def _by_rs(signals: list) -> list:
+    """Strongest 3-month RS first; signals without an RS go last, alphabetically."""
+    return sorted(signals, key=lambda x: (x.rs_pct is None, -(x.rs_pct or 0), x.symbol))
+
+
+def _signal_line(r) -> str:
+    name = f" — {r.company_name}" if r.company_name else ""
+    rs = f"RS {r.rs_pct:.0f}" if r.rs_pct is not None else "RS n/a"
+    return f"  {r.symbol}{name} ({rs})"
+
+
 def _format_exchange_block(result: ExchangeResult) -> str:
     lines = [f"<b>── {result.exchange} ──</b>"]
     if result.buy_signals:
-        for r in sorted(result.buy_signals, key=lambda x: x.symbol):
-            lines.append(f"  {r.symbol} — {r.company_name}" if r.company_name else f"  {r.symbol}")
+        for r in _by_rs(result.buy_signals):
+            lines.append(_signal_line(r))
     else:
         lines.append("  No BUY signals")
     error_note = ""
@@ -74,6 +85,7 @@ def send_scan_results(results: list[ExchangeResult]) -> None:
         f"<b>{now}</b>\n"
         f"Universe: S&amp;P 500 + S&amp;P 400 | TSX Composite\n"
         f"Signal: 4H EMA20/EMA50/SMA200 + D1 open &gt; D1 SMA200\n"
+        f"Sorted by RS (3-month return percentile within each exchange, 100 = strongest)\n"
         f"Total BUY signals: <b>{total_buy}</b>\n"
     )
     bars = [r.bar for r in results if r.bar]
