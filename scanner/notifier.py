@@ -4,6 +4,7 @@ Telegram notifier — sends a scan summary message via the Telegram Bot API.
 
 from __future__ import annotations
 
+import html
 import logging
 from datetime import datetime, timedelta, timezone
 import requests
@@ -73,8 +74,9 @@ def _error_lines(results: list[ExchangeResult]) -> list[str]:
 
 
 def _short_block(result: ExchangeResult, signals: list) -> str:
-    """Exchange label on its own line, then one ticker per line, strongest RS first."""
-    items = [f"  {r.symbol} (RS {r.rs_pct:.0f})" if r.rs_pct is not None else f"  {r.symbol} (RS n/a)"
+    """Exchange label on its own line, then one ticker (— company name) per line, strongest RS first."""
+    items = [f"  {r.symbol}" + (f" — {html.escape(r.company_name, quote=False)}" if r.company_name else "")
+             + (f" (RS {r.rs_pct:.0f})" if r.rs_pct is not None else " (RS n/a)")
              for r in _by_rs(signals)]
     return "\n".join([f"<b>── {result.exchange} ──</b>"] + (items or ["  none"]))
 
