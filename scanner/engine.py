@@ -32,6 +32,8 @@ class ExchangeResult:
     error_reasons: dict[str, int] = field(default_factory=dict)
     failed_symbols: list[str] = field(default_factory=list)
     bar: str | None = None    # 4H bar most symbols were evaluated on, exchange time
+    rising_signals: list[BuyResult] = field(default_factory=list)   # list 1
+    nogreen_signals: list[BuyResult] = field(default_factory=list)  # list 3
 
 
 # Pauses before each sequential retry round. Round 1 retries every failure;
@@ -84,7 +86,9 @@ def scan_exchange(exchange: str, symbols: list[tuple[str, str]]) -> ExchangeResu
     """
     logger.info(f"[{exchange}] Starting scan — {len(symbols)} symbols")
 
-    buy_signals: list[BuyResult] = []
+    buy_signals: list[BuyResult] = []     # list 2: current setup, daily SMA200 not rising enough
+    rising_signals: list[BuyResult] = []
+    nogreen_signals: list[BuyResult] = []
     returns: dict[str, float] = {}
     failed: dict[tuple[str, str], str] = {}
     bars: collections.Counter[str] = collections.Counter()
@@ -96,8 +100,8 @@ def scan_exchange(exchange: str, symbols: list[tuple[str, str]]) -> ExchangeResu
             daily = get_ohlcv_daily(sym)
             result = compute_buy_signal(df, daily, sym, exchange, name)
             ret = period_return(df, daily)
-            if result.buy_signal:
-                logger.info(f"[{exchange}] BUY {sym} — {result.explanation}")
+            if result.basket:
+                logger.info(f"[{exchange}] {result.basket.upper()} {sym} — {result.explanation}")
                 return item, "buy", result, ret
             return item, "ok", result, ret
         except Exception as exc:
@@ -110,7 +114,9 @@ def scan_exchange(exchange: str, symbols: list[tuple[str, str]]) -> ExchangeResu
         if status in ("buy", "ok") and "bar" in payload.values:
             bars[payload.values["bar"]] += 1
         if status == "buy":
-            buy_signals.append(payload)
+            {"rising": rising_signals,
+             "current": buy_signals,
+             "nogreen": nogreen_signals}[payload.basket].append(payload)
         if status == "error":
             failed[item] = payload
         else:
@@ -133,11 +139,13 @@ def scan_exchange(exchange: str, symbols: list[tuple[str, str]]) -> ExchangeResu
         for item in retry:
             _collect(*_scan_symbol(item))
 
-    assign_rs(buy_signals, returns)
+    for lst in (rising_signals, buy_signals, nogreen_signals):
+        assign_rs(lst, returns)
 
     reasons = dict(collections.Counter(failed.values()))
     logger.info(
-        f"[{exchange}] Done — {len(buy_signals)} BUY signals, {len(failed)} errors {reasons or ''}"
+        f"[{exchange}] Done — {len(rising_signals)} RISING, {len(buy_signals)} BUY, "
+        f"{len(nogreen_signals)} NO-GREEN, {len(failed)} errors {reasons or ''}"
     )
     if failed:
         logger.info(f"[{exchange}] Failed symbols: {', '.join(sorted(s for s, _ in failed))}")
@@ -150,6 +158,8 @@ def scan_exchange(exchange: str, symbols: list[tuple[str, str]]) -> ExchangeResu
         error_reasons=reasons,
         failed_symbols=sorted(sym for sym, _ in failed),
         bar=bars.most_common(1)[0][0] if bars else None,
+        rising_signals=rising_signals,
+        nogreen_signals=nogreen_signals,
     )
 
 

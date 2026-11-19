@@ -48,59 +48,91 @@ def _by_rs(signals: list) -> list:
     return sorted(signals, key=lambda x: (x.rs_pct is None, -(x.rs_pct or 0), x.symbol))
 
 
-def _signal_line(r) -> str:
-    name = f" — {r.company_name}" if r.company_name else ""
-    rs = f"RS {r.rs_pct:.0f}" if r.rs_pct is not None else "RS n/a"
-    return f"  {r.symbol}{name} ({rs})"
+def _now() -> str:
+    return datetime.now(timezone.utc).astimezone(_MT).strftime("%Y-%m-%d %H:%M %Z")
 
 
-def _format_exchange_block(result: ExchangeResult) -> str:
-    lines = [f"<b>── {result.exchange} ──</b>"]
-    if result.buy_signals:
-        for r in _by_rs(result.buy_signals):
-            lines.append(_signal_line(r))
-    else:
-        lines.append("  No BUY signals")
-    error_note = ""
-    if result.errors:
-        breakdown = ", ".join(f"{n} {why}" for why, n in sorted(result.error_reasons.items(), key=lambda x: -x[1]))
-        error_note = f" · {result.errors} errors: {breakdown}" if breakdown else f" · {result.errors} errors"
-    lines.append(
-        f"  (Scanned {result.symbols_checked} → {len(result.buy_signals)} BUY{error_note})"
-    )
-    if result.failed_symbols:
-        shown = result.failed_symbols[:40]
-        more = f" +{len(result.failed_symbols) - 40} more" if len(result.failed_symbols) > 40 else ""
-        lines.append(f"  Not checked: {', '.join(shown)}{more}")
-    return "\n".join(lines)
+def _bar_close(results: list[ExchangeResult]) -> str | None:
+    bars = [r.bar for r in results if r.bar]
+    return bar_close_mt(max(set(bars), key=bars.count)) if bars else None
+
+
+def _error_lines(results: list[ExchangeResult]) -> list[str]:
+    """Error breakdown + symbols not checked, per exchange (only when there are errors)."""
+    lines = []
+    for r in results:
+        if not r.errors:
+            continue
+        breakdown = ", ".join(f"{n} {why}" for why, n in sorted(r.error_reasons.items(), key=lambda x: -x[1]))
+        lines.append(f"{r.exchange}: {r.errors} errors" + (f" ({breakdown})" if breakdown else ""))
+        if r.failed_symbols:
+            shown = r.failed_symbols[:40]
+            more = f" +{len(r.failed_symbols) - 40} more" if len(r.failed_symbols) > 40 else ""
+            lines.append(f"  Not checked: {', '.join(shown)}{more}")
+    return lines
+
+
+def _short_block(result: ExchangeResult, signals: list) -> str:
+    """One line per exchange: ── US ──  AAA (RS 90) · BBB (RS 75)"""
+    items = [f"{r.symbol} (RS {r.rs_pct:.0f})" if r.rs_pct is not None else f"{r.symbol} (RS n/a)"
+             for r in _by_rs(signals)]
+    return f"<b>── {result.exchange} ──</b>  " + (" · ".join(items) if items else "none")
+
+
+# Rank order — a ticker appears only in the first list it qualifies for
+_SCAN_LISTS = [
+    ("rising_signals",  "RISING SMA200"),
+    ("buy_signals",     f"SMA200 &lt; {settings.rising_sma_min_pct:g}% RISE"),
+    ("nogreen_signals", "NO GREEN CANDLE"),
+]
+
+
+def build_scan_messages(results: list[ExchangeResult]) -> list[str]:
+    """
+    Scan messages in rank order, empty lists skipped. The first message sent
+    carries the time / bar close / universe / sort header and any errors.
+    If every list is empty, a single NO SIGNALS message is returned instead.
+    """
+    bar = _bar_close(results)
+    context = [f"<b>{_now()}</b>"]
+    if bar:
+        context.append(f"4H bar close: {bar}")
+    context += [
+        "Universe: S&amp;P 500 + S&amp;P 400 | TSX Composite",
+        "Sorted by RS (3-month return percentile within each exchange, 100 = strongest)",
+    ]
+    errors = _error_lines(results)
+
+    messages = []
+    for attr, title in _SCAN_LISTS:
+        total = sum(len(getattr(r, attr)) for r in results)
+        if total == 0:
+            continue
+        first = not messages
+        head = [f"<b>{title}</b>"] + (context if first else []) + [f"Total: <b>{total}</b>"]
+        body = [_short_block(r, getattr(r, attr)) for r in results]
+        if first and errors:
+            body += [""] + errors
+        message = "\n".join(head) + "\n\n" + "\n".join(body)
+        # Telegram max message length is 4096 chars
+        if len(message) > 4000:
+            message = message[:3990] + "\n…(truncated)"
+        messages.append(message)
+
+    if not messages:
+        scanned = " · ".join(f"{r.exchange} {r.symbols_checked}" for r in results)
+        lines = ["<b>2YC 4H — NO SIGNALS</b>", f"<b>{_now()}</b>"]
+        if bar:
+            lines.append(f"4H bar close: {bar}")
+        lines.append(f"Scanned: {scanned}")
+        messages.append("\n".join(lines + errors))
+    return messages
 
 
 def send_scan_results(results: list[ExchangeResult]) -> None:
-    """Build and send the full scan report to Telegram."""
-    now = datetime.now(timezone.utc).astimezone(_MT).strftime("%Y-%m-%d %H:%M %Z")
-    total_buy = sum(len(r.buy_signals) for r in results)
-
-    header = (
-        f"<b>2YC 4H 20/50/200 SCAN</b>\n"
-        f"<b>{now}</b>\n"
-        f"Universe: S&amp;P 500 + S&amp;P 400 | TSX Composite\n"
-        f"Signal: 4H EMA20/EMA50/SMA200 + D1 open &gt; D1 SMA200\n"
-        f"Sorted by RS (3-month return percentile within each exchange, 100 = strongest)\n"
-        f"Total BUY signals: <b>{total_buy}</b>\n"
-    )
-    bars = [r.bar for r in results if r.bar]
-    if bars:
-        header += f"4H bar close: {bar_close_mt(max(set(bars), key=bars.count))}\n"
-
-    blocks = [_format_exchange_block(r) for r in results]
-    body = "\n\n".join(blocks)
-
-    # Telegram max message length is 4096 chars
-    message = header + "\n" + body
-    if len(message) > 4000:
-        message = message[:3990] + "\n…(truncated)"
-
-    _send(message)
+    """Send the scan lists to Telegram (one message per non-empty list)."""
+    for message in build_scan_messages(results):
+        _send(message)
 
 
 def send_watchlist_results(entries: list[UniverseBacktestEntry], total_backtested: int, min_trades: int) -> None:

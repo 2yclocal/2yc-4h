@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     daily_ma_period: int = 200
     daily_ma_type: Literal["EMA", "SMA"] = "SMA"
 
+    # RISING SMA200 list — uses the DAILY SMA200 on yesterday's completed
+    # candle (same candle as the D1 filter): up > rising_sma_min_pct % vs
+    # rising_sma_lookback daily candles earlier. Same settings as 2YC 1D.
+    rising_sma_lookback: int = 3
+    rising_sma_min_pct: float = 0.20
+
     # Alert sort: RS = percentile of each symbol's N-day return among every
     # symbol scanned on the same exchange (same formula as Pullback20)
     rs_lookback: int = 63                 # ~3 months

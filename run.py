@@ -40,9 +40,12 @@ def main():
 
     print("\n" + "=" * 60)
     for r in results:
-        print(f"  {r.exchange}: {len(r.buy_signals)} BUY signals  ({r.errors} errors)")
-        for sig in r.buy_signals:
-            print(f"    → {sig.symbol} | ${sig.values.get('close')} | {sig.explanation}")
+        for label, sigs in (("RISING SMA200", r.rising_signals), ("BUY", r.buy_signals),
+                            ("NO-GREEN", r.nogreen_signals)):
+            print(f"  {r.exchange}: {len(sigs)} {label} signals")
+            for sig in sigs:
+                print(f"    → {sig.symbol} | ${sig.values.get('close')} | {sig.explanation}")
+        print(f"  {r.exchange}: {r.errors} errors")
     print("=" * 60)
 
     print("\nSending Telegram notification…")

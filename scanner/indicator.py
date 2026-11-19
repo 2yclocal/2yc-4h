@@ -10,6 +10,13 @@ Both conditions require the D1 filter: the previous completed daily candle
 opened above the daily SMA200. Signals fire on the last completed 4H bar
 only — no sell tracking, no alternating state.
 
+Daily lists (each ticker appears in only one — first match wins):
+  1. RISING SMA200 : buy_signal AND daily SMA200 up > rising_sma_min_pct %
+                     vs rising_sma_lookback daily candles earlier (yesterday's)
+  2. Current setup : buy_signal, the rest
+  3. No green rule : Condition 1 without close > open (red/doji 4H candle),
+                     D1 filter still required, not already in 1 or 2
+
 Parameters (overridable via .env):
   MA Fast      : EMA 20
   MA Slow      : EMA 50
@@ -33,6 +40,9 @@ class BuyResult:
     cond_open_cross: bool = False
     cond_ma_cross: bool = False
     daily_ok: bool = False
+    cond_open_cross_any: bool = False   # Condition 1 without the green-candle rule
+    sma_rising: bool = False            # daily SMA200 rising (see config)
+    basket: str | None = None           # "rising" | "current" | "nogreen" | None
     rs_pct: float | None = None   # set by the engine — needs the whole exchange
     explanation: str = ""
     values: dict = field(default_factory=dict)
@@ -83,13 +93,17 @@ def daily_filter(df: pd.DataFrame, daily: pd.DataFrame) -> pd.DataFrame:
 
     d1_open = np.where(has_prev, daily["open"].to_numpy()[pos], np.nan)
     d1_sma = np.where(has_prev, sma.to_numpy()[pos], np.nan)
+    n = settings.rising_sma_lookback
+    has_ref = pos - n >= 0
+    d1_sma_ref = np.where(has_prev & has_ref, sma.to_numpy()[np.clip(pos - n, 0, None)], np.nan)
     d1_ok = d1_open > d1_sma      # NaN (no history / SMA warm-up) compares False
     if not settings.daily_filter_enabled:
         d1_ok = np.ones(len(bar_times), dtype=bool)
 
     return pd.DataFrame(
         {"d1_date": days[pos].where(has_prev),
-         "d1_open": d1_open, "d1_sma200": d1_sma, "d1_ok": d1_ok},
+         "d1_open": d1_open, "d1_sma200": d1_sma, "d1_ok": d1_ok,
+         "d1_sma200_ref": d1_sma_ref},
         index=bar_times,
     )
 
@@ -125,13 +139,13 @@ def compute_buy_signal(
 
     # Condition 1: current bar opens above SMA200 and closes green, previous bar opened below it
     if settings.buy_use_open_cross:
-        cond1 = bool(
+        cond1_any = bool(
             (df["open"].iloc[-1] > df["ma_dir"].iloc[-1]) and
-            (df["close"].iloc[-1] > df["open"].iloc[-1]) and
             (df["open"].iloc[-2] < df["ma_dir"].iloc[-2])
         )
+        cond1 = cond1_any and bool(df["close"].iloc[-1] > df["open"].iloc[-1])
     else:
-        cond1 = False
+        cond1_any = cond1 = False
 
     # Condition 2: EMA Fast crossed above EMA Slow, both above Direction MA
     if settings.buy_use_ma_cross:
@@ -149,6 +163,15 @@ def compute_buy_signal(
 
     buy_signal = (cond1 or cond2) and daily_ok
 
+    # NaN reference (short history) compares False → not rising
+    sma_rising = bool(d1["d1_sma200"] > d1["d1_sma200_ref"] * (1 + settings.rising_sma_min_pct / 100))
+    if buy_signal:
+        basket = "rising" if sma_rising else "current"
+    elif cond1_any and daily_ok:
+        basket = "nogreen"
+    else:
+        basket = None
+
     last = df.iloc[-1]
     return BuyResult(
         symbol=symbol,
@@ -158,7 +181,10 @@ def compute_buy_signal(
         cond_open_cross=cond1,
         cond_ma_cross=cond2,
         daily_ok=daily_ok,
-        explanation=_build_explanation(last, d1, cond1, cond2, buy_signal),
+        cond_open_cross_any=cond1_any,
+        sma_rising=sma_rising,
+        basket=basket,
+        explanation=_build_explanation(last, d1, cond1, cond2, buy_signal, basket),
         values={
             "bar":    df.index[-1].strftime("%Y-%m-%d %H:%M"),
             "close":  round(float(last["close"]),   2),
@@ -171,8 +197,12 @@ def compute_buy_signal(
     )
 
 
-def _build_explanation(row, d1, cond1: bool, cond2: bool, buy_signal: bool) -> str:
+def _build_explanation(row, d1, cond1: bool, cond2: bool, buy_signal: bool,
+                       basket: str | None = None) -> str:
     if not buy_signal:
+        if basket == "nogreen":
+            return (f"4H open ({row['open']:.2f}) above 4H SMA200 ({row['ma_dir']:.2f}), "
+                    f"NOT green (close {row['close']:.2f}) — no-green-rule list only")
         return "No BUY signal on last bar"
     parts = []
     if cond1:
