@@ -73,10 +73,10 @@ def _error_lines(results: list[ExchangeResult]) -> list[str]:
 
 
 def _short_block(result: ExchangeResult, signals: list) -> str:
-    """One line per exchange: ── US ──  AAA (RS 90) · BBB (RS 75)"""
-    items = [f"{r.symbol} (RS {r.rs_pct:.0f})" if r.rs_pct is not None else f"{r.symbol} (RS n/a)"
+    """Exchange label on its own line, then one ticker per line, strongest RS first."""
+    items = [f"  {r.symbol} (RS {r.rs_pct:.0f})" if r.rs_pct is not None else f"  {r.symbol} (RS n/a)"
              for r in _by_rs(signals)]
-    return f"<b>── {result.exchange} ──</b>  " + (" · ".join(items) if items else "none")
+    return "\n".join([f"<b>── {result.exchange} ──</b>"] + (items or ["  none"]))
 
 
 # Rank order — a ticker appears only in the first list it qualifies for
@@ -110,10 +110,10 @@ def build_scan_messages(results: list[ExchangeResult]) -> list[str]:
             continue
         first = not messages
         head = [f"<b>{title}</b>"] + (context if first else []) + [f"Total: <b>{total}</b>"]
-        body = [_short_block(r, getattr(r, attr)) for r in results]
+        body = "\n\n".join(_short_block(r, getattr(r, attr)) for r in results)
         if first and errors:
-            body += [""] + errors
-        message = "\n".join(head) + "\n\n" + "\n".join(body)
+            body += "\n\n" + "\n".join(errors)
+        message = "\n".join(head) + "\n\n" + body
         # Telegram max message length is 4096 chars
         if len(message) > 4000:
             message = message[:3990] + "\n…(truncated)"
