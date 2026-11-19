@@ -14,6 +14,7 @@ Environment variables (set as GitHub Secrets):
 import sys
 import os
 import logging
+import html
 import requests
 from datetime import datetime, timedelta, timezone
 
@@ -42,6 +43,11 @@ def _api(method: str, **kwargs) -> dict:
     resp = requests.post(f"{BASE}/{method}", json=kwargs, timeout=15)
     resp.raise_for_status()
     return resp.json()
+
+
+def _e(text) -> str:
+    """Escape &, <, > for Telegram HTML — a bare one makes Telegram reject the message."""
+    return html.escape(str(text), quote=False)
 
 
 def _send(chat_id, text: str):
@@ -113,22 +119,22 @@ def _run_scan(symbols: list[str]) -> str:
     if buy_signals:
         lines.append(f"\n<b>✅ BUY signals ({len(buy_signals)})</b>")
         for r in sorted(buy_signals, key=lambda x: x.symbol):
-            lines.append(f"  {r.symbol} — {r.company_name}" if r.company_name else f"  {r.symbol}")
+            lines.append(f"  {_e(r.symbol)} — {_e(r.company_name)}" if r.company_name else f"  {_e(r.symbol)}")
     else:
         lines.append("\n❌ No BUY signals")
 
     if no_signal:
         lines.append(
-            f"\n<b>Passed filter — no signal:</b> {', '.join(sorted(no_signal))}"
+            f"\n<b>Passed filter — no signal:</b> {_e(', '.join(sorted(no_signal)))}"
         )
     if failed_s1:
         lines.append("\n<b>Failed Stage 1:</b>")
         for sym, reason in failed_s1:
-            lines.append(f"  {sym} — {reason}")
+            lines.append(f"  {_e(sym)} — {_e(reason)}")
     if errors:
         lines.append("\n<b>Errors:</b>")
         for sym, err in errors:
-            lines.append(f"  {sym} — {err}")
+            lines.append(f"  {_e(sym)} — {_e(err)}")
 
     elapsed = (datetime.now(timezone.utc) - start).seconds
     lines.append(f"\n<i>Completed in {elapsed}s</i>")
@@ -161,17 +167,17 @@ def _run_backtest(symbol: str) -> str:
     try:
         result = run_backtest(symbol, _exchange_for(symbol))
     except Exception as exc:
-        return f"⚠️ Backtest failed for {symbol}: {str(exc)[:150]}"
+        return f"⚠️ Backtest failed for {_e(symbol)}: {_e(str(exc)[:150])}"
 
     if result.trades_used == 0:
-        msg = f"<b>2YC 4H Backtest — {result.symbol}</b>\n\nNo closed trades found in available history."
+        msg = f"<b>2YC 4H Backtest — {_e(result.symbol)}</b>\n\nNo closed trades found in available history."
         if result.open_trade:
             ot = result.open_trade
             msg += (f"\n\n📌 Currently in an open position since {ot['entry_date']} "
                     f"@ {ot['entry_price']} — unrealized {ot['unrealized_pct']:+.2f}%")
         return msg
 
-    lines = [f"<b>2YC 4H Backtest — {result.symbol}</b>"]
+    lines = [f"<b>2YC 4H Backtest — {_e(result.symbol)}</b>"]
     lines.append(f"Trades analyzed: {result.trades_used} of {result.total_trades_all} total closed trades")
     lines.append(f"\n<b>Total P&amp;L: ${result.total_pnl_dollars:+,.0f} ({result.total_pnl_pct:+.2f}%)</b> "
                  f"(${100_000:,} per trade, not compounded)")
@@ -216,7 +222,7 @@ def _trigger_full_scan() -> str:
             "Universe: S&amp;P 500 + S&amp;P 400 + TSX Composite\n"
             "Signal: 4H EMA20/EMA50/SMA200 crossover + D1 open &gt; D1 SMA200\n\n"
         )
-    return f"⚠️ Failed to trigger scan (HTTP {resp.status_code}): {resp.text[:120]}"
+    return f"⚠️ Failed to trigger scan (HTTP {resp.status_code}): {_e(resp.text[:120])}"
 
 
 def _trigger_watchlist_backtest() -> str:
@@ -249,7 +255,7 @@ def _trigger_watchlist_backtest() -> str:
             "This runs in GitHub Actions and can take up to a couple hours — "
             "results post here automatically when done.\n"
         )
-    return f"⚠️ Failed to trigger backtest (HTTP {resp.status_code}): {resp.text[:120]}"
+    return f"⚠️ Failed to trigger backtest (HTTP {resp.status_code}): {_e(resp.text[:120])}"
 
 
 def _handle(msg: dict):
@@ -287,7 +293,7 @@ def _handle(msg: dict):
         logger.info(f"Scanning: {symbols}")
         _send(chat_id,
             f"📨 Command received at {picked_up} (sent {sent_at})\n"
-            f"⏳ Scanning {len(symbols)} symbol(s): {', '.join(symbols)}"
+            f"⏳ Scanning {len(symbols)} symbol(s): {_e(', '.join(symbols))}"
         )
         _send(chat_id, _run_scan(symbols))
         return
@@ -299,7 +305,7 @@ def _handle(msg: dict):
             return
         sym = symbols[0]
         logger.info(f"Backtesting: {sym}")
-        _send(chat_id, f"📨 Command received at {picked_up} (sent {sent_at})\n⏳ Backtesting {sym}…")
+        _send(chat_id, f"📨 Command received at {picked_up} (sent {sent_at})\n⏳ Backtesting {_e(sym)}…")
         _send(chat_id, _run_backtest(sym))
 
 
